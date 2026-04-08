@@ -20,7 +20,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             git ca-certificates \
-            devscripts fakeroot build-essential
+            devscripts equivs fakeroot build-essential
 
       - name: Checkout WineHQ-Staging source (staging tree)
         uses: actions/checkout@v4
@@ -32,7 +32,7 @@ jobs:
 
       - name: Prepare build environment (i386 + EXACT deps from debian/control)
         run: |
-          # Enable deb-src (required for build-dep)
+          # Enable deb-src (good practice for any build tools)
           sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
 
           apt-get update
@@ -40,12 +40,15 @@ jobs:
           dpkg --add-architecture i386
           apt-get update
 
-          # === FIXED: Use apt-get build-dep instead of mk-build-deps ===
-          # This is the standard, most reliable way in Ubuntu containers.
-          # It directly reads debian/control and installs exactly the Build-Depends.
-          # No more "Unable to locate package debian/control" error.
+          # === FIXED: Use mk-build-deps with explicit file path + equivs ===
+          # This is the correct & most reliable way to install Build-Depends
+          # from a local debian/control file inside a minimal container.
+          # The "./debian/control" forces it to treat the argument as a file
+          # (prevents the "apt-cache showsrc debian/control" error).
           cd wine-source
-          apt-get build-dep -y --no-install-recommends .
+          mk-build-deps --install --remove \
+            --tool='apt-get -y --no-install-recommends' \
+            ./debian/control
 
       - name: Bump version & update changelog for Ubuntu Resolute
         id: version
