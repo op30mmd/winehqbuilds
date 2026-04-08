@@ -15,12 +15,12 @@ jobs:
       contents: write
 
     steps:
-      - name: Install base tools (git + packaging utilities)
+      - name: Install base tools (git + packaging + checkinstall)
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
             git ca-certificates \
-            devscripts equivs fakeroot build-essential
+            devscripts fakeroot build-essential checkinstall
 
       - name: Checkout WineHQ-Staging source (staging tree)
         uses: actions/checkout@v4
@@ -30,9 +30,9 @@ jobs:
           path: wine-source
           fetch-depth: 1
 
-      - name: Prepare build environment (i386 + EXACT deps from debian/control)
+      - name: Prepare build environment (i386 + EXACT deps from Ubuntu's wine package)
         run: |
-          # Enable deb-src (good practice for any build tools)
+          # Enable deb-src (just in case)
           sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
 
           apt-get update
@@ -40,17 +40,13 @@ jobs:
           dpkg --add-architecture i386
           apt-get update
 
-          # === FIXED: Use mk-build-deps with explicit file path + equivs ===
-          # This is the correct & most reliable way to install Build-Depends
-          # from a local debian/control file inside a minimal container.
-          # The "./debian/control" forces it to treat the argument as a file
-          # (prevents the "apt-cache showsrc debian/control" error).
-          cd wine-source
-          mk-build-deps --install --remove \
-            --tool='apt-get -y --no-install-recommends' \
-            ./debian/control
+          # This is the key fix:
+          # The wine-staging repo does NOT contain debian/control (it's pure upstream source + patches).
+          # So we cannot use mk-build-deps or dpkg-buildpackage.
+          # Instead we use Ubuntu 26.04's own "wine" package Build-Depends → 100% dependency match.
+          apt-get build-dep -y --no-install-recommends wine
 
-      - name: Bump version & update changelog for Ubuntu Resolute
+      - name: Bump version for Ubuntu Resolute
         id: version
         run: |
           cd wine-source
@@ -63,31 +59,51 @@ jobs:
           echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
           echo "version=${NEW_VERSION}" >> $GITHUB_OUTPUT
 
-          export DEBEMAIL="actions@github.com"
-          export DEBFULLNAME="GitHub Actions CI"
-          dch \
-            --newversion "${NEW_VERSION}" \
-            --distribution "resolute" \
-            --force-distribution \
-            --force-bad-version \
-            "Automatic WineHQ-Staging build for Ubuntu 26.04 Resolute (${BUILD_DATE})."
+          echo "✅ Version set to ${NEW_VERSION}"
 
-          echo "✅ Changelog updated to ${NEW_VERSION}"
-
-      - name: Build binary .deb packages
+      - name: Build WineHQ-Staging
         run: |
           cd wine-source
-          dpkg-buildpackage -b -uc -us -j$(nproc) --no-sign
 
-      - name: Collect built .deb packages
+          # Standard Wine configure flags (you can extend this list if you need extra features)
+          ./configure \
+            --enable-win64 \
+            --prefix=/usr \
+            --with-x \
+            --with-pulse \
+            --with-dbus \
+            --with-gstreamer \
+            --with-vulkan \
+            --disable-tests
+
+          make -j$(nproc)
+
+      - name: Create .deb package with checkinstall
         run: |
-          mkdir -p artifacts
-          shopt -s nullglob
-          mv *.deb artifacts/ 2>/dev/null || true
-          echo "📦 Built packages:"
-          ls -lh artifacts/ | cat
+          cd wine-source
 
-      - name: Create GitHub Release with automatic tag + upload all .deb files
+          mkdir -p ../artifacts
+
+          # checkinstall creates a clean .deb from the "make install" step
+          checkinstall \
+            --install=no \
+            --default \
+            --pkgname=winehq-staging \
+            --pkgversion="${NEW_VERSION}" \
+            --pkgrelease=1 \
+            --pkggroup=utils \
+            --pakdir=../artifacts \
+            --maintainer="GitHub Actions <actions@github.com>" \
+            --backup=no \
+            --deldoc=yes \
+            --deldesc=yes \
+            --strip=yes \
+            make install
+
+          echo "📦 Built package:"
+          ls -lh ../artifacts/
+
+      - name: Create GitHub Release with automatic tag + upload .deb
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.NEW_VERSION }}
@@ -97,8 +113,8 @@ jobs:
 
             - Built **inside official `ubuntu:26.04` container** → **100% matching dependencies**.
             - Compiled from the official `wine-staging` tree.
-            - All binary packages included.
-            - Install with: `sudo dpkg -i *.deb`
+            - Packaged as a single installable `.deb` using Ubuntu's exact build dependencies.
+            - Install with: `sudo dpkg -i winehq-staging_*.deb`
 
             Built on: ${{ github.event_name == 'schedule' && 'schedule' || 'workflow_dispatch' }}
           files: artifacts/*.deb
