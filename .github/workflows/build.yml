@@ -22,7 +22,7 @@ jobs:
           apt-get update
 
           apt-get install -y --no-install-recommends \
-            build-essential git checkinstall python3 \
+            build-essential git checkinstall python3 autoconf \
             gcc-multilib gcc-mingw-w64 g++-mingw-w64 \
             libasound2-dev:i386 libasound2-dev \
             libpulse-dev:i386 libpulse-dev \
