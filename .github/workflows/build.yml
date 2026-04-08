@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-26.04-beta
     permissions:
       contents: write  # Required to create releases and tags
 
