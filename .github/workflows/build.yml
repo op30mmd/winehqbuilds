@@ -20,7 +20,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             git ca-certificates \
-            devscripts equivs fakeroot build-essential
+            devscripts fakeroot build-essential
 
       - name: Checkout WineHQ-Staging source (staging tree)
         uses: actions/checkout@v4
@@ -32,9 +32,7 @@ jobs:
 
       - name: Prepare build environment (i386 + EXACT deps from debian/control)
         run: |
-          # === CRITICAL FIX: Enable deb-src repositories ===
-          # Ubuntu 26.04 minimal container only has "Types: deb" by default.
-          # mk-build-deps needs "deb-src" to read Build-Depends via apt-cache showsrc.
+          # Enable deb-src (required for build-dep)
           sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
 
           apt-get update
@@ -42,9 +40,12 @@ jobs:
           dpkg --add-architecture i386
           apt-get update
 
+          # === FIXED: Use apt-get build-dep instead of mk-build-deps ===
+          # This is the standard, most reliable way in Ubuntu containers.
+          # It directly reads debian/control and installs exactly the Build-Depends.
+          # No more "Unable to locate package debian/control" error.
           cd wine-source
-          # Now mk-build-deps will succeed and install exactly the packages listed in debian/control
-          mk-build-deps --install --remove --tool='apt-get -y --no-install-recommends' debian/control
+          apt-get build-dep -y --no-install-recommends .
 
       - name: Bump version & update changelog for Ubuntu Resolute
         id: version
