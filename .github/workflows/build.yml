@@ -111,15 +111,27 @@ jobs:
           cd wine-source
           mkdir -p ../artifacts
 
+          # Fix for checkinstall failing to track directory creation
+          mkdir -p /usr/lib/wine/x86_64-windows
+          mkdir -p /usr/lib/wine/x86_64-unix
+          mkdir -p /usr/lib/wine/i386-windows
+          mkdir -p /usr/lib/wine/i386-unix
+          mkdir -p /usr/share/wine
+          mkdir -p /usr/include/wine
+          mkdir -p /usr/bin
+
+          # checkinstall strictly checks versions. Remove the ~ character to stop it from erroring/prompting.
+          PKG_VERSION=$(echo "${NEW_VERSION}" | tr '~' '-')
+
           checkinstall \
             --install=no \
             --default \
             --pkgname=winehq-staging \
-            --pkgversion="${NEW_VERSION}" \
+            --pkgversion="${PKG_VERSION}" \
             --pkgrelease=1 \
             --pkggroup=utils \
             --pakdir=../artifacts \
-            --maintainer="GitHub Actions <actions@github.com>" \
+            --maintainer="actions@github.com" \
             --backup=no \
             --deldoc=yes \
             --deldesc=yes \
