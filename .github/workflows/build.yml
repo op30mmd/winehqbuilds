@@ -22,7 +22,7 @@ jobs:
           apt-get update
 
           apt-get install -y --no-install-recommends \
-            build-essential git checkinstall \
+            build-essential git checkinstall python3 \
             gcc-multilib gcc-mingw-w64 g++-mingw-w64 \
             libasound2-dev:i386 libasound2-dev \
             libpulse-dev:i386 libpulse-dev \
@@ -65,9 +65,20 @@ jobs:
 
       - name: Apply staging patches
         run: |
-          cd wine-staging/patches
-          chmod +x patchinstall.sh
-          ./patchinstall.sh DESTDIR=../../wine-source --all
+          if [ -f "wine-staging/staging/patchinstall.py" ]; then
+            cd wine-staging/staging
+            python3 patchinstall.py DESTDIR=../../wine-source --all
+          elif [ -f "wine-staging/patches/patchinstall.py" ]; then
+            cd wine-staging/patches
+            python3 patchinstall.py DESTDIR=../../wine-source --all
+          elif [ -f "wine-staging/patches/patchinstall.sh" ]; then
+            cd wine-staging/patches
+            chmod +x patchinstall.sh
+            ./patchinstall.sh DESTDIR=../../wine-source --all
+          else
+            echo "Error: patchinstall script not found."
+            exit 1
+          fi
 
       - name: Bump version
         id: version
