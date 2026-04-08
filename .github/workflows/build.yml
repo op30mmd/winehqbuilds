@@ -65,16 +65,16 @@ jobs:
 
       - name: Apply staging patches
         run: |
-          if [ -f "wine-staging/staging/patchinstall.py" ]; then
+          if[ -f "wine-staging/staging/patchinstall.py" ]; then
             cd wine-staging/staging
-            python3 patchinstall.py DESTDIR=../../wine-source --all
+            python3 patchinstall.py DESTDIR=../../wine-source --all -W winedbg-Process_Arguments
           elif [ -f "wine-staging/patches/patchinstall.py" ]; then
             cd wine-staging/patches
-            python3 patchinstall.py DESTDIR=../../wine-source --all
-          elif [ -f "wine-staging/patches/patchinstall.sh" ]; then
+            python3 patchinstall.py DESTDIR=../../wine-source --all -W winedbg-Process_Arguments
+          elif[ -f "wine-staging/patches/patchinstall.sh" ]; then
             cd wine-staging/patches
             chmod +x patchinstall.sh
-            ./patchinstall.sh DESTDIR=../../wine-source --all
+            ./patchinstall.sh DESTDIR=../../wine-source --all -W winedbg-Process_Arguments
           else
             echo "Error: patchinstall script not found."
             exit 1
