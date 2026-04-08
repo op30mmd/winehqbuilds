@@ -1,0 +1,99 @@
+name: Build & Release WineHQ-Staging for Ubuntu 26.04 (Resolute)
+
+on:
+  workflow_dispatch:  # Manual trigger (recommended for controlled builds)
+  schedule:
+    - cron: '0 3 * * 0'  # Automatic weekly build (Sunday at 03:00 UTC) — keeps packages fresh
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write  # Required to create releases and tags
+
+    steps:
+      - name: Checkout WineHQ-Staging source (staging tree)
+        uses: actions/checkout@v4
+        with:
+          repository: wine-staging/wine-staging
+          ref: master
+          path: wine-source
+          fetch-depth: 1
+
+      - name: Prepare build environment (add i386 multiarch + install packaging tools)
+        run: |
+          sudo apt-get update
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y devscripts equivs fakeroot build-essential
+
+      - name: Install exact build dependencies from debian/control (no manual list, no mismatch)
+        run: |
+          cd wine-source
+          # mk-build-deps creates and installs a dummy package with ALL Build-Depends
+          # This guarantees the build uses exactly the libraries/versions present in Ubuntu 26.04
+          sudo mk-build-deps --install --remove --tool='apt-get -y --no-install-recommends' debian/control
+
+      - name: Bump version & update changelog for Ubuntu Resolute
+        id: version
+        run: |
+          cd wine-source
+
+          # Extract upstream Wine version from configure.ac
+          UPSTREAM_VERSION=$(sed -n 's/^AC_INIT(\[Wine\], \[\([^]]*\)\].*/\1/p' configure.ac)
+
+          # Automatic versioning: <upstream>~winehq-staging~resolute-YYYYMMDD
+          # This prevents version conflicts and clearly marks it as a staging build for Resolute
+          BUILD_DATE=$(date +%Y%m%d)
+          NEW_VERSION="${UPSTREAM_VERSION}~winehq-staging~resolute-${BUILD_DATE}"
+
+          echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
+          echo "version=${NEW_VERSION}" >> $GITHUB_OUTPUT
+
+          # Update debian/changelog (required for proper .deb metadata)
+          export DEBEMAIL="actions@github.com"
+          export DEBFULLNAME="GitHub Actions CI"
+          dch \
+            --newversion "${NEW_VERSION}" \
+            --distribution "resolute" \
+            --force-distribution \
+            --force-bad-version \
+            "Automatic WineHQ-Staging build for Ubuntu 26.04 Resolute (${BUILD_DATE})."
+
+          echo "✅ Changelog updated to ${NEW_VERSION}"
+
+      - name: Build binary .deb packages
+        run: |
+          cd wine-source
+          # -b = binary only (no source package)
+          # -uc -us = unsigned (CI build)
+          # -j$(nproc) = use all CPU cores for faster build
+          dpkg-buildpackage -b -uc -us -j$(nproc) --no-sign
+
+      - name: Collect built .deb packages
+        run: |
+          mkdir -p artifacts
+          # dpkg-buildpackage places .deb files in the parent directory (workspace root)
+          shopt -s nullglob
+          mv *.deb artifacts/ 2>/dev/null || true
+          echo "📦 Built packages:"
+          ls -lh artifacts/ | cat
+
+      - name: Create GitHub Release with automatic tag + upload all .deb files
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.NEW_VERSION }}
+          name: WineHQ-Staging ${{ env.NEW_VERSION }} for Ubuntu 26.04 (Resolute)
+          body: |
+            **Automatic build** of WineHQ-Staging for Ubuntu 26.04 (codename **Resolute**).
+
+            - Built from the official `wine-staging` tree.
+            - Compiled natively on Ubuntu 26.04 → **zero dependency mismatch**.
+            - All binary packages (`wine*`, `libwine*`, etc.) are included.
+            - Install with: `sudo dpkg -i *.deb` (or use `apt` after adding to your sources).
+
+            Built on: ${{ github.event_name == 'schedule' && 'schedule' || 'workflow_dispatch' }}
+          files: artifacts/*.deb
+          draft: false
+          prerelease: true
+          generate_release_notes: true
