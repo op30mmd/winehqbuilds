@@ -15,12 +15,51 @@ jobs:
       contents: write
 
     steps:
-      - name: Install base tools (git + packaging + checkinstall)
+      - name: Install base tools + Wine build dependencies (official WineHQ list)
         run: |
           apt-get update
+
+          # Enable multiarch for 32-bit support (required by Wine)
+          dpkg --add-architecture i386
+          apt-get update
+
+          # Official recommended dependencies from https://wiki.winehq.org/Building_Wine
+          # This completely bypasses the broken "apt-get build-dep wine" (unicode-cldr-core conflict)
           apt-get install -y --no-install-recommends \
-            git ca-certificates \
-            devscripts fakeroot build-essential checkinstall
+            build-essential \
+            gcc-multilib gcc-mingw-w64 g++-mingw-w64 \
+            libasound2-dev:i386 libasound2-dev \
+            libpulse-dev:i386 libpulse-dev \
+            libdbus-1-dev:i386 libdbus-1-dev \
+            libfontconfig-dev:i386 libfontconfig-dev \
+            libfreetype-dev:i386 libfreetype-dev \
+            libgnutls28-dev:i386 libgnutls28-dev \
+            libgl-dev:i386 libgl-dev \
+            libunwind-dev:i386 libunwind-dev \
+            libx11-dev:i386 libx11-dev \
+            libxcomposite-dev:i386 libxcomposite-dev \
+            libxcursor-dev:i386 libxcursor-dev \
+            libxfixes-dev:i386 libxfixes-dev \
+            libxi-dev:i386 libxi-dev \
+            libxrandr-dev:i386 libxrandr-dev \
+            libxrender-dev:i386 libxrender-dev \
+            libxext-dev:i386 libxext-dev \
+            libwayland-dev:i386 libwayland-dev \
+            libegl-dev:i386 libegl-dev \
+            libxkbcommon-dev:i386 libxkbcommon-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            libsdl2-dev:i386 libsdl2-dev \
+            libudev-dev:i386 libudev-dev \
+            libvulkan-dev:i386 libvulkan-dev \
+            libglu1-mesa-dev libosmesa6-dev \
+            libv4l-dev:i386 libv4l-dev \
+            liblcms2-dev libgphoto2-dev libcapi20-dev \
+            libgsm1-dev libmpg123-dev libopenal-dev \
+            libpcap0.8-dev libusb-1.0-0-dev \
+            flex bison gettext pkg-config icoutils sharutils \
+            fontforge-nox librsvg2-bin
+
+          echo "✅ All Wine build dependencies installed (no unicode-cldr-core conflict)"
 
       - name: Checkout WineHQ-Staging source (staging tree)
         uses: actions/checkout@v4
@@ -29,22 +68,6 @@ jobs:
           ref: master
           path: wine-source
           fetch-depth: 1
-
-      - name: Prepare build environment (i386 + EXACT deps from Ubuntu's wine package)
-        run: |
-          # Enable deb-src (just in case)
-          sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
-
-          apt-get update
-
-          dpkg --add-architecture i386
-          apt-get update
-
-          # This is the key fix:
-          # The wine-staging repo does NOT contain debian/control (it's pure upstream source + patches).
-          # So we cannot use mk-build-deps or dpkg-buildpackage.
-          # Instead we use Ubuntu 26.04's own "wine" package Build-Depends → 100% dependency match.
-          apt-get build-dep -y --no-install-recommends wine
 
       - name: Bump version for Ubuntu Resolute
         id: version
@@ -61,11 +84,11 @@ jobs:
 
           echo "✅ Version set to ${NEW_VERSION}"
 
-      - name: Build WineHQ-Staging
+      - name: Configure & Build WineHQ-Staging
         run: |
           cd wine-source
 
-          # Standard Wine configure flags (you can extend this list if you need extra features)
+          # Standard Wine configure flags (64-bit + staging features)
           ./configure \
             --enable-win64 \
             --prefix=/usr \
@@ -74,6 +97,8 @@ jobs:
             --with-dbus \
             --with-gstreamer \
             --with-vulkan \
+            --with-sdl \
+            --with-openal \
             --disable-tests
 
           make -j$(nproc)
@@ -84,7 +109,6 @@ jobs:
 
           mkdir -p ../artifacts
 
-          # checkinstall creates a clean .deb from the "make install" step
           checkinstall \
             --install=no \
             --default \
@@ -98,6 +122,7 @@ jobs:
             --deldoc=yes \
             --deldesc=yes \
             --strip=yes \
+            --stripso=yes \
             make install
 
           echo "📦 Built package:"
@@ -111,10 +136,10 @@ jobs:
           body: |
             **Automatic build** of WineHQ-Staging for Ubuntu 26.04 (codename **Resolute**).
 
-            - Built **inside official `ubuntu:26.04` container** → **100% matching dependencies**.
-            - Compiled from the official `wine-staging` tree.
-            - Packaged as a single installable `.deb` using Ubuntu's exact build dependencies.
-            - Install with: `sudo dpkg -i winehq-staging_*.deb`
+            - Built **inside official `ubuntu:26.04` container** using official WineHQ build dependencies.
+            - Avoids the broken `apt-get build-dep wine` (unicode-cldr-core conflict in Ubuntu packaging).
+            - 64-bit build with full staging patches.
+            - Install with: `sudo dpkg -i winehq-staging_*.deb && sudo apt-get install -f`
 
             Built on: ${{ github.event_name == 'schedule' && 'schedule' || 'workflow_dispatch' }}
           files: artifacts/*.deb
