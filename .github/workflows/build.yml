@@ -15,15 +15,14 @@ jobs:
       contents: write
 
     steps:
-      - name: Install base tools + Wine build dependencies
+      - name: Install dependencies
         run: |
           apt-get update
-
           dpkg --add-architecture i386
           apt-get update
 
           apt-get install -y --no-install-recommends \
-            build-essential \
+            build-essential git checkinstall \
             gcc-multilib gcc-mingw-w64 g++-mingw-w64 \
             libasound2-dev:i386 libasound2-dev \
             libpulse-dev:i386 libpulse-dev \
@@ -54,47 +53,35 @@ jobs:
             libgsm1-dev libmpg123-dev libopenal-dev \
             libpcap0.8-dev libusb-1.0-0-dev \
             flex bison gettext pkg-config icoutils sharutils \
-            fontforge-nox librsvg2-bin \
-            git checkinstall
+            fontforge-nox librsvg2-bin
 
-      - name: Checkout Wine source
-        uses: actions/checkout@v4
-        with:
-          repository: wine-mirror/wine
-          ref: master
-          path: wine-source
-          fetch-depth: 1
+      - name: Clone Wine source
+        run: |
+          git clone --depth=1 https://github.com/wine-mirror/wine.git wine-source
 
-      - name: Checkout Wine-Staging patches
-        uses: actions/checkout@v4
-        with:
-          repository: wine-staging/wine-staging
-          ref: master
-          path: wine-staging
-          fetch-depth: 1
+      - name: Clone Wine-Staging
+        run: |
+          git clone --depth=1 https://github.com/wine-staging/wine-staging.git wine-staging
 
       - name: Apply staging patches
         run: |
           cd wine-staging
-          ./patches/patchinstall.sh DESTDIR=../wine-source --all
+          chmod +x ./patchinstall.sh
+          ./patchinstall.sh DESTDIR=../wine-source --all
 
       - name: Bump version
         id: version
         run: |
           cd wine-source
-
           UPSTREAM_VERSION=$(sed -n 's/^AC_INIT(\[Wine\], \[\([^]]*\)\].*/\1/p' configure.ac)
-
           BUILD_DATE=$(date +%Y%m%d)
           NEW_VERSION="${UPSTREAM_VERSION}~winehq-staging~resolute-${BUILD_DATE}"
-
           echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
           echo "version=${NEW_VERSION}" >> $GITHUB_OUTPUT
 
-      - name: Configure & Build Wine
+      - name: Configure & Build
         run: |
           cd wine-source
-
           ./configure \
             --enable-win64 \
             --prefix=/usr \
@@ -106,13 +93,11 @@ jobs:
             --with-sdl \
             --with-openal \
             --disable-tests
-
           make -j$(nproc)
 
-      - name: Create .deb package
+      - name: Package .deb
         run: |
           cd wine-source
-
           mkdir -p ../artifacts
 
           checkinstall \
@@ -133,15 +118,10 @@ jobs:
 
           ls -lh ../artifacts/
 
-      - name: Create GitHub Release
+      - name: Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.NEW_VERSION }}
-          name: WineHQ-Staging ${{ env.NEW_VERSION }} for Ubuntu 26.04 (Resolute)
-          body: |
-            Automatic build of WineHQ-Staging for Ubuntu 26.04.
+          name: WineHQ-Staging ${{ env.NEW_VERSION }}
           files: artifacts/*.deb
-          draft: false
           prerelease: true
-          generate_release_notes: true
-        
