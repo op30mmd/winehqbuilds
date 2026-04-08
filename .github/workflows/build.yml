@@ -65,9 +65,9 @@ jobs:
 
       - name: Apply staging patches
         run: |
-          cd wine-staging
-          chmod +x ./patchinstall.sh
-          ./patchinstall.sh DESTDIR=../wine-source --all
+          cd wine-staging/patches
+          chmod +x patchinstall.sh
+          ./patchinstall.sh DESTDIR=../../wine-source --all
 
       - name: Bump version
         id: version
