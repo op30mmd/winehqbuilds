@@ -65,7 +65,7 @@ jobs:
 
       - name: Apply staging patches
         run: |
-          if[ -f "wine-staging/staging/patchinstall.py" ]; then
+          if [ -f "wine-staging/staging/patchinstall.py" ]; then
             cd wine-staging/staging
             python3 patchinstall.py DESTDIR=../../wine-source --all -W winedbg-Process_Arguments
           elif [ -f "wine-staging/patches/patchinstall.py" ]; then
