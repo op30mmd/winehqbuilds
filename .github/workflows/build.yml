@@ -1,9 +1,9 @@
 name: Build & Release WineHQ-Staging for Ubuntu 26.04 (Resolute)
 
 on:
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
   schedule:
-    - cron: '0 3 * * 0'  # Weekly on Sunday at 03:00 UTC
+    - cron: '0 3 * * 0'
 
 jobs:
   build:
@@ -15,16 +15,13 @@ jobs:
       contents: write
 
     steps:
-      - name: Install base tools + Wine build dependencies (official WineHQ list)
+      - name: Install base tools + Wine build dependencies
         run: |
           apt-get update
 
-          # Enable multiarch for 32-bit support (required by Wine)
           dpkg --add-architecture i386
           apt-get update
 
-          # Official recommended dependencies from https://wiki.winehq.org/Building_Wine
-          # This completely bypasses the broken "apt-get build-dep wine" (unicode-cldr-core conflict)
           apt-get install -y --no-install-recommends \
             build-essential \
             gcc-multilib gcc-mingw-w64 g++-mingw-w64 \
@@ -57,19 +54,31 @@ jobs:
             libgsm1-dev libmpg123-dev libopenal-dev \
             libpcap0.8-dev libusb-1.0-0-dev \
             flex bison gettext pkg-config icoutils sharutils \
-            fontforge-nox librsvg2-bin
+            fontforge-nox librsvg2-bin \
+            git checkinstall
 
-          echo "✅ All Wine build dependencies installed (no unicode-cldr-core conflict)"
-
-      - name: Checkout WineHQ-Staging source (staging tree)
+      - name: Checkout Wine source
         uses: actions/checkout@v4
         with:
-          repository: wine-staging/wine-staging
+          repository: wine-mirror/wine
           ref: master
           path: wine-source
           fetch-depth: 1
 
-      - name: Bump version for Ubuntu Resolute
+      - name: Checkout Wine-Staging patches
+        uses: actions/checkout@v4
+        with:
+          repository: wine-staging/wine-staging
+          ref: master
+          path: wine-staging
+          fetch-depth: 1
+
+      - name: Apply staging patches
+        run: |
+          cd wine-staging
+          ./patches/patchinstall.sh DESTDIR=../wine-source --all
+
+      - name: Bump version
         id: version
         run: |
           cd wine-source
@@ -82,13 +91,10 @@ jobs:
           echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
           echo "version=${NEW_VERSION}" >> $GITHUB_OUTPUT
 
-          echo "✅ Version set to ${NEW_VERSION}"
-
-      - name: Configure & Build WineHQ-Staging
+      - name: Configure & Build Wine
         run: |
           cd wine-source
 
-          # Standard Wine configure flags (64-bit + staging features)
           ./configure \
             --enable-win64 \
             --prefix=/usr \
@@ -103,7 +109,7 @@ jobs:
 
           make -j$(nproc)
 
-      - name: Create .deb package with checkinstall
+      - name: Create .deb package
         run: |
           cd wine-source
 
@@ -125,24 +131,17 @@ jobs:
             --stripso=yes \
             make install
 
-          echo "📦 Built package:"
           ls -lh ../artifacts/
 
-      - name: Create GitHub Release with automatic tag + upload .deb
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.NEW_VERSION }}
           name: WineHQ-Staging ${{ env.NEW_VERSION }} for Ubuntu 26.04 (Resolute)
           body: |
-            **Automatic build** of WineHQ-Staging for Ubuntu 26.04 (codename **Resolute**).
-
-            - Built **inside official `ubuntu:26.04` container** using official WineHQ build dependencies.
-            - Avoids the broken `apt-get build-dep wine` (unicode-cldr-core conflict in Ubuntu packaging).
-            - 64-bit build with full staging patches.
-            - Install with: `sudo dpkg -i winehq-staging_*.deb && sudo apt-get install -f`
-
-            Built on: ${{ github.event_name == 'schedule' && 'schedule' || 'workflow_dispatch' }}
+            Automatic build of WineHQ-Staging for Ubuntu 26.04.
           files: artifacts/*.deb
           draft: false
           prerelease: true
           generate_release_notes: true
+        
