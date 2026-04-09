@@ -86,8 +86,6 @@ jobs:
           cd wine-source
           
           # Wine's configure.ac dynamically loads the version via m4 from the VERSION file.
-          # The previous sed command failed to match and returned an empty string,
-          # causing the version to start with a non-digit character (-winehq...).
           UPSTREAM_VERSION=$(grep -ioE 'version[-.0-9A-Za-z]+' VERSION | cut -d' ' -f2 | head -n1)
           
           if [ -z "$UPSTREAM_VERSION" ]; then
@@ -132,14 +130,19 @@ jobs:
 
           # Set up debian package metadata
           mkdir -p debian-pkg/DEBIAN
-          echo "Package: winehq-staging" > debian-pkg/DEBIAN/control
-          echo "Version: ${NEW_VERSION}-1" >> debian-pkg/DEBIAN/control
-          echo "Section: utils" >> debian-pkg/DEBIAN/control
-          echo "Priority: optional" >> debian-pkg/DEBIAN/control
-          echo "Architecture: amd64" >> debian-pkg/DEBIAN/control
-          echo "Maintainer: actions@github.com" >> debian-pkg/DEBIAN/control
-          echo "Description: WineHQ-Staging" >> debian-pkg/DEBIAN/control
-          echo " Package created by GitHub Actions." >> debian-pkg/DEBIAN/control
+          cat <<EOF > debian-pkg/DEBIAN/control
+          Package: winehq-staging
+          Version: ${NEW_VERSION}-1
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: actions@github.com
+          Provides: wine, wine-common, wine64, wine32
+          Conflicts: wine, wine-common, wine64, wine32, winehq-stable, winehq-devel, libwine
+          Replaces: wine, wine-common, wine64, wine32, winehq-stable, winehq-devel, libwine
+          Description: WineHQ-Staging
+           Package created by GitHub Actions.
+          EOF
 
           # Build the package natively utilizing dpkg-deb
           # Use the tag name (no tildes) for the file name artifact to prevent weird URL encoding.
