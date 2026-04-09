@@ -90,7 +90,7 @@ jobs:
           # causing the version to start with a non-digit character (-winehq...).
           UPSTREAM_VERSION=$(grep -ioE 'version[-.0-9A-Za-z]+' VERSION | cut -d' ' -f2 | head -n1)
           
-          if[ -z "$UPSTREAM_VERSION" ]; then
+          if [ -z "$UPSTREAM_VERSION" ]; then
             UPSTREAM_VERSION="11.0"
           fi
           
