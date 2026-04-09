@@ -84,9 +84,19 @@ jobs:
         id: version
         run: |
           cd wine-source
-          UPSTREAM_VERSION=$(sed -n 's/^AC_INIT(\[Wine\], \[\([^]]*\)\].*/\1/p' configure.ac)
+          
+          # Wine's configure.ac dynamically loads the version via m4 from the VERSION file.
+          # The previous sed command failed to match and returned an empty string,
+          # causing the version to start with a non-digit character (-winehq...).
+          UPSTREAM_VERSION=$(grep -ioE 'version[-.0-9A-Za-z]+' VERSION | cut -d' ' -f2 | head -n1)
+          
+          if [ -z "$UPSTREAM_VERSION" ]; then
+            UPSTREAM_VERSION="11.0"
+          fi
+          
           BUILD_DATE=$(date +%Y%m%d)
           NEW_VERSION="${UPSTREAM_VERSION}~winehq-staging~resolute-${BUILD_DATE}"
+          
           echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
           echo "version=${NEW_VERSION}" >> $GITHUB_OUTPUT
 
@@ -111,19 +121,13 @@ jobs:
           cd wine-source
           mkdir -p ../artifacts
 
-          PKG_VERSION=$(echo "${NEW_VERSION}" | tr '~' '-')
-
-          # checkinstall is incompatible with Wine's internal installation scripts because its
-          # installwatch feature does not track cross-directory file moves properly (causing chmod errors).
-          # Building the deb package natively is a robust and standard alternative.
-          
           # Install to a local fakeroot directory
           make install DESTDIR=$(pwd)/debian-pkg
 
           # Set up debian package metadata
           mkdir -p debian-pkg/DEBIAN
           echo "Package: winehq-staging" > debian-pkg/DEBIAN/control
-          echo "Version: ${PKG_VERSION}-1" >> debian-pkg/DEBIAN/control
+          echo "Version: ${NEW_VERSION}-1" >> debian-pkg/DEBIAN/control
           echo "Section: utils" >> debian-pkg/DEBIAN/control
           echo "Priority: optional" >> debian-pkg/DEBIAN/control
           echo "Architecture: amd64" >> debian-pkg/DEBIAN/control
@@ -132,7 +136,9 @@ jobs:
           echo " Package created by GitHub Actions." >> debian-pkg/DEBIAN/control
 
           # Build the package natively utilizing dpkg-deb
-          dpkg-deb --build debian-pkg ../artifacts/winehq-staging_${PKG_VERSION}-1_amd64.deb
+          # Use a safer filename without tildes just for the resulting file output
+          FILE_VERSION=$(echo "${NEW_VERSION}" | tr '~' '-')
+          dpkg-deb --build debian-pkg ../artifacts/winehq-staging_${FILE_VERSION}-1_amd64.deb
 
           ls -lh ../artifacts/
 
