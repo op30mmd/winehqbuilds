@@ -65,13 +65,13 @@ jobs:
 
       - name: Apply staging patches
         run: |
-          if [ -f "wine-staging/staging/patchinstall.py" ]; then
+          if[ -f "wine-staging/staging/patchinstall.py" ]; then
             cd wine-staging/staging
             python3 patchinstall.py DESTDIR=../../wine-source --all -W winedbg-Process_Arguments -W msxml3-whitespace
           elif [ -f "wine-staging/patches/patchinstall.py" ]; then
             cd wine-staging/patches
             python3 patchinstall.py DESTDIR=../../wine-source --all -W winedbg-Process_Arguments -W msxml3-whitespace
-          elif [ -f "wine-staging/patches/patchinstall.sh" ]; then
+          elif[ -f "wine-staging/patches/patchinstall.sh" ]; then
             cd wine-staging/patches
             chmod +x patchinstall.sh
             ./patchinstall.sh DESTDIR=../../wine-source --all -W winedbg-Process_Arguments -W msxml3-whitespace
@@ -90,14 +90,20 @@ jobs:
           # causing the version to start with a non-digit character (-winehq...).
           UPSTREAM_VERSION=$(grep -ioE 'version[-.0-9A-Za-z]+' VERSION | cut -d' ' -f2 | head -n1)
           
-          if [ -z "$UPSTREAM_VERSION" ]; then
+          if[ -z "$UPSTREAM_VERSION" ]; then
             UPSTREAM_VERSION="11.0"
           fi
           
           BUILD_DATE=$(date +%Y%m%d)
+          
+          # NEW_VERSION keeps the Debian-style ~ for the package control file
           NEW_VERSION="${UPSTREAM_VERSION}~winehq-staging~resolute-${BUILD_DATE}"
           
+          # TAG_NAME strips the ~ so the Git release doesn't fail
+          TAG_NAME="${UPSTREAM_VERSION}-winehq-staging-resolute-${BUILD_DATE}"
+          
           echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
+          echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
           echo "version=${NEW_VERSION}" >> $GITHUB_OUTPUT
 
       - name: Configure & Build
@@ -136,16 +142,15 @@ jobs:
           echo " Package created by GitHub Actions." >> debian-pkg/DEBIAN/control
 
           # Build the package natively utilizing dpkg-deb
-          # Use a safer filename without tildes just for the resulting file output
-          FILE_VERSION=$(echo "${NEW_VERSION}" | tr '~' '-')
-          dpkg-deb --build debian-pkg ../artifacts/winehq-staging_${FILE_VERSION}-1_amd64.deb
+          # Use the tag name (no tildes) for the file name artifact to prevent weird URL encoding.
+          dpkg-deb --build debian-pkg ../artifacts/winehq-staging_${TAG_NAME}-1_amd64.deb
 
           ls -lh ../artifacts/
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.NEW_VERSION }}
-          name: WineHQ-Staging ${{ env.NEW_VERSION }}
+          tag_name: ${{ env.TAG_NAME }}
+          name: WineHQ-Staging ${{ env.TAG_NAME }}
           files: artifacts/*.deb
           prerelease: true
