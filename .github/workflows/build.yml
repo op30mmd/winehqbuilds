@@ -22,7 +22,7 @@ jobs:
           apt-get update
 
           apt-get install -y --no-install-recommends \
-            build-essential git checkinstall python3 autoconf \
+            build-essential git python3 autoconf \
             gcc-multilib gcc-mingw-w64 g++-mingw-w64 \
             libasound2-dev:i386 libasound2-dev \
             libpulse-dev:i386 libpulse-dev \
@@ -111,33 +111,28 @@ jobs:
           cd wine-source
           mkdir -p ../artifacts
 
-          # Fix for checkinstall failing to track directory creation
-          mkdir -p /usr/lib/wine/x86_64-windows
-          mkdir -p /usr/lib/wine/x86_64-unix
-          mkdir -p /usr/lib/wine/i386-windows
-          mkdir -p /usr/lib/wine/i386-unix
-          mkdir -p /usr/share/wine
-          mkdir -p /usr/include/wine
-          mkdir -p /usr/bin
-
-          # checkinstall strictly checks versions. Remove the ~ character to stop it from erroring/prompting.
           PKG_VERSION=$(echo "${NEW_VERSION}" | tr '~' '-')
 
-          checkinstall \
-            --install=no \
-            --default \
-            --pkgname=winehq-staging \
-            --pkgversion="${PKG_VERSION}" \
-            --pkgrelease=1 \
-            --pkggroup=utils \
-            --pakdir=../artifacts \
-            --maintainer="actions@github.com" \
-            --backup=no \
-            --deldoc=yes \
-            --deldesc=yes \
-            --strip=yes \
-            --stripso=yes \
-            make install
+          # checkinstall is incompatible with Wine's internal installation scripts because its
+          # installwatch feature does not track cross-directory file moves properly (causing chmod errors).
+          # Building the deb package natively is a robust and standard alternative.
+          
+          # Install to a local fakeroot directory
+          make install DESTDIR=$(pwd)/debian-pkg
+
+          # Set up debian package metadata
+          mkdir -p debian-pkg/DEBIAN
+          echo "Package: winehq-staging" > debian-pkg/DEBIAN/control
+          echo "Version: ${PKG_VERSION}-1" >> debian-pkg/DEBIAN/control
+          echo "Section: utils" >> debian-pkg/DEBIAN/control
+          echo "Priority: optional" >> debian-pkg/DEBIAN/control
+          echo "Architecture: amd64" >> debian-pkg/DEBIAN/control
+          echo "Maintainer: actions@github.com" >> debian-pkg/DEBIAN/control
+          echo "Description: WineHQ-Staging" >> debian-pkg/DEBIAN/control
+          echo " Package created by GitHub Actions." >> debian-pkg/DEBIAN/control
+
+          # Build the package natively utilizing dpkg-deb
+          dpkg-deb --build debian-pkg ../artifacts/winehq-staging_${PKG_VERSION}-1_amd64.deb
 
           ls -lh ../artifacts/
 
