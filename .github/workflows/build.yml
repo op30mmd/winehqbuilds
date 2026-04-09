@@ -108,7 +108,7 @@ jobs:
         run: |
           cd wine-source
           ./configure \
-            --enable-win64 \
+            --enable-archs=x86_64,i386 \
             --prefix=/usr \
             --with-x \
             --with-pulse \
