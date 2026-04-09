@@ -18,40 +18,23 @@ jobs:
       - name: Install dependencies
         run: |
           apt-get update
-          dpkg --add-architecture i386
-          apt-get update
 
+          # With New WoW64, we only need the MinGW compilers for 32-bit compilation.
+          # We NO LONGER need 32-bit Unix libraries (lib...:i386).
           apt-get install -y --no-install-recommends \
             build-essential git python3 autoconf \
-            gcc-multilib gcc-mingw-w64 g++-mingw-w64 \
-            libasound2-dev:i386 libasound2-dev \
-            libpulse-dev:i386 libpulse-dev \
-            libdbus-1-dev:i386 libdbus-1-dev \
-            libfontconfig-dev:i386 libfontconfig-dev \
-            libfreetype-dev:i386 libfreetype-dev \
-            libgnutls28-dev:i386 libgnutls28-dev \
-            libgl-dev:i386 libgl-dev \
-            libunwind-dev:i386 libunwind-dev \
-            libx11-dev:i386 libx11-dev \
-            libxcomposite-dev:i386 libxcomposite-dev \
-            libxcursor-dev:i386 libxcursor-dev \
-            libxfixes-dev:i386 libxfixes-dev \
-            libxi-dev:i386 libxi-dev \
-            libxrandr-dev:i386 libxrandr-dev \
-            libxrender-dev:i386 libxrender-dev \
-            libxext-dev:i386 libxext-dev \
-            libwayland-dev:i386 libwayland-dev \
-            libegl-dev:i386 libegl-dev \
-            libxkbcommon-dev:i386 libxkbcommon-dev \
-            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-            libsdl2-dev:i386 libsdl2-dev \
-            libudev-dev:i386 libudev-dev \
-            libvulkan-dev:i386 libvulkan-dev \
-            libglu1-mesa-dev libosmesa6-dev \
-            libv4l-dev:i386 libv4l-dev \
-            liblcms2-dev libgphoto2-dev libcapi20-dev \
-            libgsm1-dev libmpg123-dev libopenal-dev \
-            libpcap0.8-dev libusb-1.0-0-dev \
+            gcc-mingw-w64 g++-mingw-w64 \
+            libasound2-dev libpulse-dev libdbus-1-dev \
+            libfontconfig-dev libfreetype-dev libgnutls28-dev \
+            libgl-dev libunwind-dev libx11-dev libxcomposite-dev \
+            libxcursor-dev libxfixes-dev libxi-dev libxrandr-dev \
+            libxrender-dev libxext-dev libwayland-dev wayland-protocols \
+            libegl-dev libxkbcommon-dev libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev libsdl2-dev libudev-dev \
+            libvulkan-dev libglu1-mesa-dev libosmesa6-dev libv4l-dev \
+            liblcms2-dev libgphoto2-dev libcapi20-dev libgsm1-dev \
+            libmpg123-dev libopenal-dev libpcap0.8-dev libusb-1.0-0-dev \
+            libcups2-dev libpcsclite-dev \
             flex bison gettext pkg-config icoutils sharutils \
             fontforge-nox librsvg2-bin
 
@@ -128,7 +111,11 @@ jobs:
           # Install to a local fakeroot directory
           make install DESTDIR=$(pwd)/debian-pkg
 
+          # Calculate installed package size (in KB)
+          INSTALLED_SIZE=$(du -ks debian-pkg | cut -f1)
+
           # Set up debian package metadata
+          # Kept flush to the left so YAML indentation doesn't break the debian control syntax
           mkdir -p debian-pkg/DEBIAN
           cat <<EOF > debian-pkg/DEBIAN/control
           Package: winehq-staging
@@ -136,6 +123,7 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: amd64
+          Installed-Size: ${INSTALLED_SIZE}
           Maintainer: actions@github.com
           Provides: wine, wine-common, wine64, wine32
           Conflicts: wine, wine-common, wine64, wine32, winehq-stable, winehq-devel, libwine
@@ -143,9 +131,13 @@ jobs:
           Description: WineHQ-Staging
            Package created by GitHub Actions.
           EOF
+          
+          # Strip leading spaces from the control file just to be absolutely safe
+          sed -i 's/^[ \t]*//' debian-pkg/DEBIAN/control
+          # Ensure the description continuation line retains its necessary 1 leading space
+          sed -i 's/^Package created by GitHub Actions./ Package created by GitHub Actions./' debian-pkg/DEBIAN/control
 
           # Build the package natively utilizing dpkg-deb
-          # Use the tag name (no tildes) for the file name artifact to prevent weird URL encoding.
           dpkg-deb --build debian-pkg ../artifacts/winehq-staging_${TAG_NAME}-1_amd64.deb
 
           ls -lh ../artifacts/
