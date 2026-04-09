@@ -76,12 +76,13 @@ jobs:
           fi
           
           BUILD_DATE=$(date +%Y%m%d)
+          RUN_NUMBER="${{ github.run_number }}"
           
-          # NEW_VERSION keeps the Debian-style ~ for the package control file
-          NEW_VERSION="${UPSTREAM_VERSION}~winehq-staging~resolute-${BUILD_DATE}"
+          # NEW_VERSION appends the GitHub Run Number for unique deb packages
+          NEW_VERSION="${UPSTREAM_VERSION}~winehq-staging~resolute-${BUILD_DATE}.${RUN_NUMBER}"
           
-          # TAG_NAME strips the ~ so the Git release doesn't fail
-          TAG_NAME="${UPSTREAM_VERSION}-winehq-staging-resolute-${BUILD_DATE}"
+          # TAG_NAME strips the ~ so the Git release doesn't fail, also uniquely tracked by Run Number
+          TAG_NAME="${UPSTREAM_VERSION}-winehq-staging-resolute-${BUILD_DATE}.${RUN_NUMBER}"
           
           echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
           echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
@@ -114,28 +115,20 @@ jobs:
           # Calculate installed package size (in KB)
           INSTALLED_SIZE=$(du -ks debian-pkg | cut -f1)
 
-          # Set up debian package metadata
-          # Kept flush to the left so YAML indentation doesn't break the debian control syntax
+          # Set up debian package metadata safely
           mkdir -p debian-pkg/DEBIAN
-          cat <<EOF > debian-pkg/DEBIAN/control
-          Package: winehq-staging
-          Version: ${NEW_VERSION}-1
-          Section: utils
-          Priority: optional
-          Architecture: amd64
-          Installed-Size: ${INSTALLED_SIZE}
-          Maintainer: actions@github.com
-          Provides: wine, wine-common, wine64, wine32
-          Conflicts: wine, wine-common, wine64, wine32, winehq-stable, winehq-devel, libwine
-          Replaces: wine, wine-common, wine64, wine32, winehq-stable, winehq-devel, libwine
-          Description: WineHQ-Staging
-           Package created by GitHub Actions.
-          EOF
-          
-          # Strip leading spaces from the control file just to be absolutely safe
-          sed -i 's/^[ \t]*//' debian-pkg/DEBIAN/control
-          # Ensure the description continuation line retains its necessary 1 leading space
-          sed -i 's/^Package created by GitHub Actions./ Package created by GitHub Actions./' debian-pkg/DEBIAN/control
+          echo "Package: winehq-staging" > debian-pkg/DEBIAN/control
+          echo "Version: ${NEW_VERSION}-1" >> debian-pkg/DEBIAN/control
+          echo "Section: utils" >> debian-pkg/DEBIAN/control
+          echo "Priority: optional" >> debian-pkg/DEBIAN/control
+          echo "Architecture: amd64" >> debian-pkg/DEBIAN/control
+          echo "Installed-Size: ${INSTALLED_SIZE}" >> debian-pkg/DEBIAN/control
+          echo "Maintainer: actions@github.com" >> debian-pkg/DEBIAN/control
+          echo "Provides: wine, wine-common, wine64, wine32" >> debian-pkg/DEBIAN/control
+          echo "Conflicts: wine, wine-common, wine64, wine32, winehq-stable, winehq-devel, libwine" >> debian-pkg/DEBIAN/control
+          echo "Replaces: wine, wine-common, wine64, wine32, winehq-stable, winehq-devel, libwine" >> debian-pkg/DEBIAN/control
+          echo "Description: WineHQ-Staging" >> debian-pkg/DEBIAN/control
+          echo " Package created by GitHub Actions." >> debian-pkg/DEBIAN/control
 
           # Build the package natively utilizing dpkg-deb
           dpkg-deb --build debian-pkg ../artifacts/winehq-staging_${TAG_NAME}-1_amd64.deb
